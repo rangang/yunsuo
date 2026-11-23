@@ -51,6 +51,10 @@ src-tauri/      Rust 后端
     commands.rs   Tauri IPC 命令
 ```
 
+## 下载安装
+
+前往 [Releases](https://github.com/rangang/yunsuo/releases) 下载最新 Windows x64 安装包（NSIS，简体中文），双击安装即可。Win10/11 一般已自带 WebView2 运行时。
+
 ## License
 
-Private / All rights reserved.
+[MIT](./LICENSE)
