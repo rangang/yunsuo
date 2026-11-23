@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { api, pickDirectory } from "@/ipc";
+import { credStore } from "@/platform";
 import type { Server, ServerInput, TestResult } from "@/ipc/types";
 
 const props = defineProps<{ server: Server | null }>();
@@ -125,7 +126,7 @@ async function save() {
         <div class="field full">
           <label>{{ form.auth_type === "key" ? "私钥口令（无口令留空）" : "密码" }} <span v-if="form.auth_type === 'password' && !server" class="req">*</span></label>
           <input v-model="form.secret" class="input mono" type="password" :placeholder="server ? '留空 = 保留已保存的凭据' : ''" autocomplete="new-password" />
-          <div class="hint">凭据将加密保存到 Windows 凭据管理器，不写入配置文件</div>
+          <div class="hint">凭据将加密保存到 {{ credStore }}，不写入配置文件</div>
         </div>
       </div>
 

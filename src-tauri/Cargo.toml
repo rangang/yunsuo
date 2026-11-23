@@ -1,6 +1,6 @@
 [package]
 name = "deploypilot"
-version = "0.1.10"
+version = "0.1.11"
 description = "云梭 - 一键打包部署工具"
 edition = "2021"
 

@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            rust_targets: ""
+            args: ""
+          - platform: macos-latest
+            rust_targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and upload to Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "云梭 ${{ github.ref_name }}"
+          releaseBody: |
+            一键打包部署桌面工具：构建 → 打包 → SFTP 上传 → 备份 → 原子替换 → 重启 → 健康检查，失败一键回滚。
+
+            ## 下载
+            - **Windows 10/11 x64**：`YunSuo_*_x64-setup.exe`（NSIS 简体中文安装界面）
+            - **macOS 10.15+（Intel / Apple Silicon 通用）**：`YunSuo_*_universal.dmg`
+
+            ## 安装提示
+            - Windows：一般已自带 WebView2 运行时；若缺失安装器会自动引导下载
+            - macOS：未签名应用首次打开请右键 → 打开，或执行 `xattr -cr /Applications/云梭.app`
+            - 目标服务器：Linux + SSH（前端部署需 unzip，健康检查需 curl）
+          assetNamePattern: "YunSuo_[version]_[arch][setup].[ext]"
+          args: ${{ matrix.args }}

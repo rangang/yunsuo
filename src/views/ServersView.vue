@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { useAppStore } from "@/stores/app";
 import { useDialogs } from "@/stores/dialogs";
 import { api } from "@/ipc";
+import { credStore } from "@/platform";
 import type { Server } from "@/ipc/types";
 import ServerModal from "@/components/ServerModal.vue";
 
@@ -53,7 +54,7 @@ function testClass(s: Server): string {
     <div class="page-head">
       <div>
         <div class="page-title">服务器管理</div>
-        <div class="page-sub">SSH 连接配置 · 密码与私钥口令加密保存在 Windows 凭据管理器</div>
+        <div class="page-sub">SSH 连接配置 · 密码与私钥口令加密保存在 {{ credStore }}</div>
       </div>
       <div class="head-right">
         <button class="btn primary" @click="modal = { mode: 'add' }">＋ 添加服务器</button>

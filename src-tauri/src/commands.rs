@@ -187,7 +187,13 @@ pub fn save_text_file(path: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_log_dir(state: State<AppState>) -> Result<(), String> {
-    std::process::Command::new("explorer.exe")
+    #[cfg(windows)]
+    let program = "explorer.exe";
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let program = "xdg-open";
+    std::process::Command::new(program)
         .arg(&state.log_dir)
         .spawn()
         .map_err(|e| e.to_string())?;

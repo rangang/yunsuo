@@ -53,7 +53,12 @@ src-tauri/      Rust 后端
 
 ## 下载安装
 
-前往 [Releases](https://github.com/rangang/yunsuo/releases) 下载最新 Windows x64 安装包（NSIS，简体中文），双击安装即可。Win10/11 一般已自带 WebView2 运行时。
+前往 [Releases](https://github.com/rangang/yunsuo/releases) 下载最新安装包：
+
+- **Windows 10/11 x64**：`YunSuo_*_x64-setup.exe`（NSIS 简体中文）
+- **macOS 10.15+**：`YunSuo_*_universal.dmg`（Intel / Apple Silicon 通用；未签名应用首次打开请右键 → 打开）
+
+推送 `v*` tag 后 GitHub Actions 自动构建双平台安装包并发布 Release。
 
 ## License
 

@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { api, autostart, isTauri } from "@/ipc";
 import { useDialogs } from "@/stores/dialogs";
 import { applyTheme } from "@/theme";
+import { credStore, osName } from "@/platform";
 import logoUrl from "@/assets/logo.png";
 
 const dialogs = useDialogs();
@@ -127,7 +128,7 @@ onMounted(async () => {
             <div class="r-ctrl"><select class="input" style="width: 140px" disabled><option>简体中文</option></select></div>
           </div>
           <div class="set-row">
-            <div><div class="r-label">开机自启动</div><div class="r-desc">登录 Windows 后自动运行</div></div>
+            <div><div class="r-label">开机自启动</div><div class="r-desc">登录 {{ osName }} 后自动运行</div></div>
             <div class="r-ctrl"><button class="toggle" :class="{ on: autoStart }" @click="changeAutostart"></button></div>
           </div>
           <div class="set-row">
@@ -181,7 +182,7 @@ onMounted(async () => {
         <!-- 通知 -->
         <div v-if="section === 'notify'" class="set-card">
           <div class="set-row">
-            <div><div class="r-label">部署/回滚成功通知</div><div class="r-desc">任务完成时发送 Windows 桌面通知</div></div>
+            <div><div class="r-label">部署/回滚成功通知</div><div class="r-desc">任务完成时发送 {{ osName }} 桌面通知</div></div>
             <div class="r-ctrl"><button class="toggle" :class="{ on: notifySuccess }" @click="notifySuccess = !notifySuccess; set('notify_success', notifySuccess ? '1' : '0')"></button></div>
           </div>
           <div class="set-row">
@@ -205,7 +206,7 @@ onMounted(async () => {
         <!-- 安全与数据 -->
         <div v-if="section === 'security'" class="set-card">
           <div class="set-row">
-            <div><div class="r-label">凭据存储</div><div class="r-desc">密码与私钥口令保存在 Windows 凭据管理器，不落明文盘</div></div>
+            <div><div class="r-label">凭据存储</div><div class="r-desc">密码与私钥口令保存在 {{ credStore }}，不落明文盘</div></div>
             <div class="r-ctrl"><span class="tag green">已启用</span></div>
           </div>
           <div class="set-row">
@@ -227,7 +228,7 @@ onMounted(async () => {
           <div class="a-mark">
             <img :src="logoUrl" alt="云梭" />
           </div>
-          <div style="font-size: 17px; font-weight: 700">云梭 <span style="color: var(--faint); font-weight: 400; font-size: 12.5px">v0.1.10</span></div>
+          <div style="font-size: 17px; font-weight: 700">云梭 <span style="color: var(--faint); font-weight: 400; font-size: 12.5px">v0.1.11</span></div>
           <div style="font-size: 12.5px; color: var(--muted); margin-top: 6px">一键打包部署 · 让发版像穿梭一样快</div>
           <div style="font-size: 12px; color: var(--faint); margin-top: 10px">Tauri 2 · Rust · Vue 3　|　{{ isTauri ? "桌面应用" : "浏览器调试模式" }}</div>
         </div>
