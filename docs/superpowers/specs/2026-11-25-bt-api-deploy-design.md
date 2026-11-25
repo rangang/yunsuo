@@ -26,7 +26,7 @@
 - 上传：`POST /files`，`action=UploadFile`，multipart 字段 `path`（目标目录，绝对路径）、`zunfile`（文件内容）。文档未提供分片参数，单次上传大小限制未知。
 - 执行 shell（无直接 ExecShell 接口，经计划任务模块）：
   1. `POST /crontab` `action=AddCrontab`：`name`、`type`（周期类型）、`where1`（周期值）、`sType=toShell`、`sBody`（脚本内容）→ 返回 `id`。
-  2. `POST /crontab` `action=set_execute_script`，参数 `id`：立即执行该任务。
+  2. `POST /crontab` `action=StartTask`，参数 `id`：立即执行该任务（面板「执行」按钮对应动作；旧文档中的 `set_execute_script` 在 11.x 不触发执行）。
   3. `POST /crontab` `action=GetLogs`，参数 `id`：日志文本在响应 `msg` 字段。
   4. `POST /crontab` `action=DelCrontab`，参数 `id`：删除任务。
 - 连通性测试：`POST /system` `action=GetSystemTotal`（系统信息，含面板版本）。
@@ -85,7 +85,7 @@ API 密钥复用现有 vault 插槽 `DeployPilot / server-{id}`（vault.rs 零�
 
 1. 包装脚本：`( 原脚本\n); echo "YUNSUO_EXIT=$?"`（子 shell 隔离原脚本的 `set -e` / `exit`，保证退出码标记必达）。
 2. `AddCrontab`：`name="yunsuo-<ts>"`、`sType=toShell`、`sBody=包装脚本`、周期 `type=minute-n`、`where1=30`（30 分钟一次，避免执行期间被周期误触发）。
-3. `set_execute_script(id)` 立即执行。
+3. `StartTask(id)` 立即执行。
 4. 每 1 秒轮询 `GetLogs(id)`，直到输出含 `YUNSUO_EXIT=` 标记或超时；解析标记得退出码，标记之前的文本为输出。
 5. **无论成功、失败、超时、取消，必调 `DelCrontab(id)`**（删除失败仅记日志，不影响主结果）。
 

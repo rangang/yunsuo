@@ -112,7 +112,7 @@ impl BtClient {
         }
     }
 
-    /// 经计划任务执行 shell：AddCrontab → set_execute_script → 轮询 GetLogs → DelCrontab（必删）
+    /// 经计划任务执行 shell：AddCrontab → StartTask → 轮询 GetLogs → DelCrontab（必删）
     pub async fn exec_script(
         &self,
         script: &str,
@@ -151,17 +151,19 @@ impl BtClient {
     }
 
     async fn run_task(&self, id: i64, timeout_secs: u64, cancel: &AtomicBool) -> Result<(i32, String), String> {
-        self.call("crontab", vec![
-            ("action", "set_execute_script".into()),
+        let run = self.call("crontab", vec![
+            ("action", "StartTask".into()),
             ("id", id.to_string()),
         ]).await?;
+        let mut last_raw = format!("触发响应: {}", run["msg"].as_str().unwrap_or(""));
         let deadline = Instant::now() + Duration::from_secs(timeout_secs);
         loop {
             if cancel.load(Ordering::Relaxed) {
                 return Err("已取消".into());
             }
             if Instant::now() >= deadline {
-                return Err(format!("远程执行超时（{timeout_secs} 秒），可能面板计划任务服务未运行"));
+                let tail: String = last_raw.chars().skip(last_raw.chars().count().saturating_sub(200)).collect();
+                return Err(format!("远程执行超时（{timeout_secs} 秒），可能面板计划任务服务未运行。诊断: {tail}"));
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
             let v = match self.call("crontab", vec![
@@ -170,10 +172,12 @@ impl BtClient {
             ]).await {
                 Ok(v) => v,
                 // 任务刚触发、日志尚未生成时面板返回 status:false「当前日志为空!」，属未就绪而非失败
-                Err(e) if e.contains("日志为空") => continue,
+                Err(e) if e.contains("日志为空") => { last_raw = e; continue; }
                 Err(e) => return Err(e),
             };
-            if let Some(r) = parse_exit(v["msg"].as_str().unwrap_or("")) {
+            let msg = v["msg"].as_str().unwrap_or("");
+            last_raw = msg.to_string();
+            if let Some(r) = parse_exit(msg) {
                 return Ok(r);
             }
         }
