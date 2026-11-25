@@ -76,6 +76,7 @@ API 密钥复用现有 vault 插槽 `DeployPilot / server-{id}`（vault.rs 零�
 
 `BtClient::new(panel_url, api_sk, tls_insecure)`。内部统一 `call(module, action, params) -> Result<serde_json::Value, String>`：
 
+- **panel_url 规范化**：解析 URL，取 origin（`scheme://host:port`）作为 API 基址，忽略路径部分（安全入口只拦截页面登录，API 走根路由）；去除尾部斜杠。非法 URL 在构造时报错。
 - 附加 `request_time` / `request_token`（每次请求实时计算）。
 - `tls_insecure` 时配置 reqwest 接受无效证书（仅此服务器连接）。
 - 解析 JSON；`status:false` → `Err(msg)`；网络/证书错误转为带指引的中文提示（见 §8）。
@@ -94,7 +95,7 @@ API 密钥复用现有 vault 插槽 `DeployPilot / server-{id}`（vault.rs 零�
 
 - 目标路径：`{remote_dir}/.deploy_tmp/{ts}/{upload_name}`（目录由前置 exec 创建）。
 - ≤8MB：单次 `UploadFile` 直传，文件名即 `upload_name`。
-- >8MB：本地按 8MB 切块，逐块上传为 `{upload_name}.part0001...`（序号 4 位补零）；全部完成后 exec：`cat 分块 > upload_name && rm 分块 && wc -c < upload_name`，校验字节数与本地一致，不一致报错。
+- >8MB：本地按 8MB 切块，逐块上传为 `{upload_name}.part0001...`（序号 4 位补零）；全部完成后 exec：`cd 目标目录 && cat 分块 > upload_name && rm 分块 && wc -c < upload_name`（脚本内一律绝对路径或先 cd），校验字节数与本地一致，不一致报错。
 - 每块失败按现有 `upload_retry` 设置整块重试；块边界检查 cancel。
 - 进度：复用现有 `Progress` 事件（uploaded/total/speed_bps），按已确认块字节数累计上报。
 - 返回 remote_path 供 deploy 脚本使用。
@@ -134,7 +135,7 @@ trait Transport {
   - 宝塔分支：名称、面板地址（placeholder `https://1.2.3.4:8888`）、API 密钥（密码框，编辑态留空=保留旧凭据，同现有语义）、☐ 允许自签证书（默认不勾）。隐藏 host/port/username/私钥行。
   - 校验：面板地址须为 http(s) URL；新增时 API 密钥必填。
 - `ServersView.vue`：列表加类型徽标（SSH / 宝塔）；宝塔行显示 panel_url。
-- `ProfileModal.vue`：字段不变；所选服务器为宝塔时默认重启命令去掉 `sudo`（计划任务以 root 执行），并显示提示「备份目录请放在站点根目录之外，避免被公网下载」。
+- `ProfileModal.vue`：字段不变；所选服务器为宝塔时：前端项目默认重启命令为**空**（静态替换无需重启；宝塔 nginx 为编译安装，无 systemd unit，不能沿用 `systemctl reload nginx`），Java 项目默认 `systemctl restart <name>`（去掉 sudo，计划任务以 root 执行；如服务由宝塔托管则用户自行改为对应重启脚本）。显示提示「备份目录请放在站点根目录之外，避免被公网下载」。
 - `ipc/types.ts`：`Server`/`ServerInput` 增加 `server_type`、`panel_url`、`tls_insecure`；`auth_type` 联合类型加 `"apikey"`。
 - 浏览器 mock（`ipc/index.ts`）：加一条宝塔样例服务器；`test_server*` mock 维持恒成功；部署事件流不变。
 
@@ -148,7 +149,7 @@ trait Transport {
 | 签名/时间戳错误 | 提示「检查 API 密钥与本机时间（与服务器误差需小于 60 秒）」 |
 | IP 不在白名单 | 提示「到面板设置 → API 接口，把本机公网 IP 加入白名单」 |
 | 自签证书握手失败 | 提示「如面板使用自签证书，请勾选『允许自签证书』」 |
-| exec 超时 | 删任务 → 部署失败，沿用现有「建议回滚」路径 |
+| exec 超时 | 删任务 → 部署失败，沿用现有「建议回滚」路径；提示可能原因含面板计划任务服务未运行 |
 | 上传块重试耗尽 | 部署失败，沿用现有重试/报错路径 |
 | DelCrontab 失败 | 仅记警告日志，不改变主流程结果 |
 
@@ -175,5 +176,6 @@ trait Transport {
 | src/components/ServerModal.vue | 连接方式切换 + 宝塔表单 |
 | src/views/ServersView.vue | 类型徽标 |
 | src/components/ProfileModal.vue | 宝塔默认值与提示 |
+| README.md | 功能特性补充「宝塔面板 API 部署（无需 SSH）」 |
 
 不改动：scripts.rs、ssh.rs、vault.rs、builder.rs、store 其余表。
