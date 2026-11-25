@@ -59,6 +59,6 @@ jobs:
             ## 安装提示
             - Windows：一般已自带 WebView2 运行时；若缺失安装器会自动引导下载
             - macOS：未签名应用首次打开请右键 → 打开，或执行 `xattr -cr /Applications/云梭.app`
-            - 目标服务器：Linux + SSH（前端部署需 unzip，健康检查需 curl）
+            - 目标服务器：Linux + SSH，或宝塔面板 API 模式（前端部署需 unzip，健康检查需 curl）
           assetNamePattern: "YunSuo_[version]_[arch][setup].[ext]"
           args: ${{ matrix.args }}
