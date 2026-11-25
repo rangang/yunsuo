@@ -164,10 +164,15 @@ impl BtClient {
                 return Err(format!("远程执行超时（{timeout_secs} 秒），可能面板计划任务服务未运行"));
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let v = self.call("crontab", vec![
+            let v = match self.call("crontab", vec![
                 ("action", "GetLogs".into()),
                 ("id", id.to_string()),
-            ]).await?;
+            ]).await {
+                Ok(v) => v,
+                // 任务刚触发、日志尚未生成时面板返回 status:false「当前日志为空!」，属未就绪而非失败
+                Err(e) if e.contains("日志为空") => continue,
+                Err(e) => return Err(e),
+            };
             if let Some(r) = parse_exit(v["msg"].as_str().unwrap_or("")) {
                 return Ok(r);
             }
