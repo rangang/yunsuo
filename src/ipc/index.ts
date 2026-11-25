@@ -157,7 +157,7 @@ const mockApi = {
   async get_history_log(): Promise<string> {
     return "[14:32:01] ▶ 步骤 1/7 · 本地构建 npm run build\n[14:32:39] ✓ built in 38.2s\n[14:33:38] DEPLOY_OK — 部署成功（mock 日志）";
   },
-  async rollback({ project_id }: { project_id: number }): Promise<void> {
+  async rollback({ projectId: project_id }: { projectId: number }): Promise<void> {
     const emit = (e: DeployEvent) => mockListeners.forEach((cb) => cb(e));
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     (async () => {
@@ -171,7 +171,7 @@ const mockApi = {
       emit({ type: "finished", project_id, ok: true, cancelled: false, message: "已回滚到最新备份并重启服务（mock）", duration_ms: 1200 });
     })();
   },
-  async start_deploy({ project_id }: { project_id: number }): Promise<void> {
+  async start_deploy({ projectId: project_id }: { projectId: number }): Promise<void> {
     // 浏览器调试：模拟一次完整流水线事件流
     const emit = (e: DeployEvent) => mockListeners.forEach((cb) => cb(e));
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
