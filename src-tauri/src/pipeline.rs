@@ -1,7 +1,7 @@
 //! 部署流水线引擎（M3：prepare → build → package → connect → upload → deploy → verify）。
 //! 每步状态 / 日志 / 进度通过 Tauri event 推给前端；日志落盘 + 历史入库；支持取消与回滚。
 use crate::model::{DeployProfile, Project, Server};
-use crate::{builder, scripts, ssh, store};
+use crate::{bt, builder, scripts, ssh, store};
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -119,6 +119,115 @@ impl Transport for SshTransport {
     }
     async fn close(&self) {
         let _ = self.session.disconnect(russh::Disconnect::ByApplication, "finished", "").await;
+    }
+}
+
+struct BtTransport {
+    client: bt::BtClient,
+    retry: u64,
+}
+
+#[async_trait::async_trait]
+impl Transport for BtTransport {
+    async fn exec(&self, ctx: &Ctx, script: &str, timeout_secs: u64, cancel: &AtomicBool) -> Result<(i32, String), String> {
+        let o = self.client.exec_script(script, timeout_secs, cancel).await?;
+        if let Some(w) = o.cleanup_warning {
+            ctx.log(w, "stderr");
+        }
+        Ok((o.code, o.output))
+    }
+
+    async fn upload(&self, ctx: &Ctx, local_file: &Path, upload_name: &str, remote_dir: &str, ts: &str, total: u64, cancel: &Arc<AtomicBool>) -> Result<String, String> {
+        const CHUNK: u64 = 8 * 1024 * 1024;
+        let base = format!("{}/.deploy_tmp/{}", remote_dir.trim_end_matches('/'), ts);
+        let mkdir = self.client.exec_script(&format!("mkdir -p {}", bt::sh_quote(&base)), 30, cancel).await?;
+        if mkdir.code != 0 {
+            return Err(format!("创建远程临时目录失败: {}", mkdir.output));
+        }
+        let remote_path = format!("{base}/{upload_name}");
+        ctx.log(format!("宝塔 API → {remote_path}"), "info");
+
+        let parts = (total + CHUNK - 1) / CHUNK;
+        let mut file = tokio::fs::File::open(local_file).await.map_err(|e| e.to_string())?;
+        let mut buf = vec![0u8; CHUNK as usize];
+        let mut names: Vec<String> = Vec::new();
+        let mut uploaded: u64 = 0;
+        let mut last_emit = Instant::now();
+        let mut last_bytes: u64 = 0;
+        for i in 0..parts {
+            check_cancel(cancel)?;
+            let want = CHUNK.min(total - uploaded) as usize;
+            tokio::io::AsyncReadExt::read_exact(&mut file, &mut buf[..want]).await.map_err(|e| e.to_string())?;
+            let name = if parts == 1 { upload_name.to_string() } else { bt::part_name(upload_name, i) };
+            let mut attempt = 0u64;
+            loop {
+                match self.client.upload_file(&buf[..want], &base, &name).await {
+                    Ok(()) => break,
+                    Err(e) => {
+                        if attempt >= self.retry {
+                            return Err(format!("上传失败（分块 {}/{parts}，已重试 {attempt} 次）: {e}", i + 1));
+                        }
+                        attempt += 1;
+                        ctx.log(format!("分块上传中断: {e} — 第 {attempt}/{} 次重试…", self.retry), "stderr");
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        check_cancel(cancel)?;
+                    }
+                }
+            }
+            names.push(name);
+            uploaded += want as u64;
+            let speed = ((uploaded - last_bytes) as f64 / last_emit.elapsed().as_secs_f64().max(0.001)) as u64;
+            ctx.progress(uploaded, total, speed);
+            last_emit = Instant::now();
+            last_bytes = uploaded;
+        }
+
+        let verify_script = if parts == 1 {
+            format!("wc -c < {}", bt::sh_quote(&remote_path))
+        } else {
+            bt::merge_script(&base, upload_name, &names)
+        };
+        let v = self.client.exec_script(&verify_script, 120, cancel).await?;
+        let size: u64 = v.output.trim().parse().unwrap_or(0);
+        if v.code != 0 || size != total {
+            return Err(format!("上传校验失败：本地 {total} 字节，远程 {size} 字节"));
+        }
+        Ok(remote_path)
+    }
+
+    async fn close(&self) {}
+}
+
+async fn connect_transport(
+    ctx: &Ctx,
+    server: &Server,
+    secret: Option<&str>,
+    settings: &RunSettings,
+) -> Result<Box<dyn Transport>, String> {
+    if server.server_type == "bt" {
+        let url = server.panel_url.as_deref().filter(|s| !s.trim().is_empty())
+            .ok_or("宝塔服务器未配置面板地址")?;
+        let sk = secret.filter(|s| !s.is_empty())
+            .ok_or("未保存宝塔 API 密钥，请编辑服务器填写")?;
+        ctx.log(format!("▶ 连接宝塔面板 {url}"), "info");
+        let client = bt::BtClient::new(url, sk, server.tls_insecure)?;
+        let t = client.test_connection().await;
+        if !t.ok {
+            return Err(format!("宝塔面板连接失败: {}", t.message));
+        }
+        ctx.log(format!("面板连接成功 · {}ms · {}", t.latency_ms, t.os_info.unwrap_or_default()), "info");
+        Ok(Box::new(BtTransport { client, retry: settings.upload_retry }))
+    } else {
+        ctx.log(format!("▶ 连接服务器 {}@{}:{}", server.username, server.host, server.port), "info");
+        let auth = ssh::build_auth(&server.auth_type, server.key_path.as_deref(), secret)?;
+        let session = tokio::time::timeout(
+            std::time::Duration::from_secs(settings.ssh_timeout),
+            ssh::connect_and_auth(&server.host, server.port, &server.username, auth),
+        )
+        .await
+        .map_err(|_| format!("SSH 连接超时（{} 秒）", settings.ssh_timeout))
+        .and_then(|r| r.map_err(|e| format!("SSH 连接失败: {e}")))?;
+        Ok(Box::new(SshTransport { session }))
     }
 }
 
@@ -319,21 +428,11 @@ async fn run_inner(
     // ---- 4. connect ----
     *current_step = "connect".into();
     ctx.step("connect", "running", None);
-    ctx.log(format!("▶ 连接服务器 {}@{}:{}", server.username, server.host, server.port), "info");
-    let auth = ssh::build_auth(&server.auth_type, server.key_path.as_deref(), secret)?;
-    let session = tokio::time::timeout(
-        std::time::Duration::from_secs(settings.ssh_timeout),
-        ssh::connect_and_auth(&server.host, server.port, &server.username, auth),
-    )
-    .await
-    .map_err(|_| format!("SSH 连接超时（{} 秒）", settings.ssh_timeout))
-    .and_then(|r| r.map_err(|e| format!("SSH 连接失败: {e}")))
-    .map_err(|e| {
+    let transport = connect_transport(ctx, server, secret, settings).await.map_err(|e| {
         ctx.step("connect", "failed", None);
         e
     })?;
     ctx.step("connect", "done", None);
-    let transport = SshTransport { session };
 
     // connect 之后的所有步骤共用会话，结束时统一断开
     let result = async {
@@ -498,17 +597,8 @@ pub async fn run_rollback(
     let result = async {
         check_cancel(&cancel)?;
         ctx.step("connect", "running", None);
-        ctx.log(format!("▶ 连接服务器 {}@{}:{}", server.username, server.host, server.port), "info");
-        let auth = ssh::build_auth(&server.auth_type, server.key_path.as_deref(), secret.as_deref())?;
-        let session = tokio::time::timeout(
-            std::time::Duration::from_secs(settings.ssh_timeout),
-            ssh::connect_and_auth(&server.host, server.port, &server.username, auth),
-        )
-        .await
-        .map_err(|_| format!("SSH 连接超时（{} 秒）", settings.ssh_timeout))
-        .and_then(|r| r.map_err(|e| format!("SSH 连接失败: {e}")))?;
+        let transport = connect_transport(&ctx, &server, secret.as_deref(), &settings).await?;
         ctx.step("connect", "done", None);
-        let transport = SshTransport { session };
 
         current_step = "rollback".into();
         ctx.step("rollback", "running", None);

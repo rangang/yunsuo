@@ -3,7 +3,7 @@ use crate::model::{
     ServerInput, TestResult,
 };
 use crate::pipeline::DeployControl;
-use crate::{builder, ssh, store, vault};
+use crate::{bt, builder, ssh, store, vault};
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -56,6 +56,14 @@ pub async fn test_server(state: State<'_, AppState>, id: i64) -> Result<TestResu
         let secret = vault::get_secret(id)?;
         (server, secret)
     };
+    if server.server_type == "bt" {
+        let url = server.panel_url.as_deref().filter(|s| !s.trim().is_empty())
+            .ok_or("未配置面板地址")?;
+        let sk = secret.as_deref().filter(|s| !s.is_empty())
+            .ok_or("未保存 API 密钥")?;
+        let client = bt::BtClient::new(url, sk, server.tls_insecure)?;
+        return Ok(client.test_connection().await);
+    }
     let auth = ssh::build_auth(
         &server.auth_type,
         server.key_path.as_deref(),
@@ -66,6 +74,14 @@ pub async fn test_server(state: State<'_, AppState>, id: i64) -> Result<TestResu
 
 #[tauri::command]
 pub async fn test_server_draft(input: ServerInput) -> Result<TestResult, String> {
+    if input.server_type == "bt" {
+        let url = input.panel_url.as_deref().filter(|s| !s.trim().is_empty())
+            .ok_or("未配置面板地址")?;
+        let sk = input.secret.as_deref().filter(|s| !s.is_empty())
+            .ok_or("请填写 API 密钥")?;
+        let client = bt::BtClient::new(url, sk, input.tls_insecure)?;
+        return Ok(client.test_connection().await);
+    }
     let auth = ssh::build_auth(
         &input.auth_type,
         input.key_path.as_deref(),
