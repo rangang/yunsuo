@@ -67,6 +67,9 @@ pub fn init(conn: &Connection) -> rusqlite::Result<()> {
         "ALTER TABLE deploy_profile ADD COLUMN site_dir TEXT NOT NULL DEFAULT 'current'",
         "ALTER TABLE deploy_profile ADD COLUMN jar_name TEXT NOT NULL DEFAULT 'app.jar'",
         "ALTER TABLE deploy_record ADD COLUMN env_name TEXT NOT NULL DEFAULT 'default'",
+        "ALTER TABLE server ADD COLUMN server_type TEXT NOT NULL DEFAULT 'ssh'",
+        "ALTER TABLE server ADD COLUMN panel_url TEXT",
+        "ALTER TABLE server ADD COLUMN tls_insecure INTEGER NOT NULL DEFAULT 0",
     ] {
         let _ = conn.execute_batch(col);
     }
@@ -108,11 +111,14 @@ fn row_to_server(row: &rusqlite::Row) -> rusqlite::Result<Server> {
         key_path: row.get(6)?,
         has_credential: row.get::<_, i64>(7)? != 0,
         created_at: row.get(8)?,
+        server_type: row.get(9)?,
+        panel_url: row.get(10)?,
+        tls_insecure: row.get::<_, i64>(11)? != 0,
     })
 }
 
 const SERVER_COLS: &str =
-    "id, name, host, port, username, auth_type, key_path, has_credential, created_at";
+    "id, name, host, port, username, auth_type, key_path, has_credential, created_at, server_type, panel_url, tls_insecure";
 
 pub fn list_servers(conn: &Connection) -> Result<Vec<Server>, String> {
     let mut stmt = conn
@@ -138,8 +144,10 @@ pub fn get_server(conn: &Connection, id: i64) -> Result<Server, String> {
 
 pub fn insert_server(conn: &Connection, input: &ServerInput) -> Result<i64, String> {
     conn.execute(
-        "INSERT INTO server (name, host, port, username, auth_type, key_path) VALUES (?1,?2,?3,?4,?5,?6)",
-        params![input.name, input.host, input.port as i64, input.username, input.auth_type, input.key_path],
+        "INSERT INTO server (name, host, port, username, auth_type, key_path, server_type, panel_url, tls_insecure)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![input.name, input.host, input.port as i64, input.username, input.auth_type, input.key_path,
+                input.server_type, input.panel_url, input.tls_insecure as i64],
     )
     .map_err(|e| e.to_string())?;
     Ok(conn.last_insert_rowid())
@@ -147,8 +155,10 @@ pub fn insert_server(conn: &Connection, input: &ServerInput) -> Result<i64, Stri
 
 pub fn update_server(conn: &Connection, id: i64, input: &ServerInput) -> Result<(), String> {
     let n = conn.execute(
-        "UPDATE server SET name=?1, host=?2, port=?3, username=?4, auth_type=?5, key_path=?6 WHERE id=?7",
-        params![input.name, input.host, input.port as i64, input.username, input.auth_type, input.key_path, id],
+        "UPDATE server SET name=?1, host=?2, port=?3, username=?4, auth_type=?5, key_path=?6,
+                           server_type=?7, panel_url=?8, tls_insecure=?9 WHERE id=?10",
+        params![input.name, input.host, input.port as i64, input.username, input.auth_type, input.key_path,
+                input.server_type, input.panel_url, input.tls_insecure as i64, id],
     )
     .map_err(|e| e.to_string())?;
     if n == 0 {
@@ -374,4 +384,66 @@ pub fn get_record(conn: &Connection, id: i64) -> Result<HistoryRecord, String> {
     .optional()
     .map_err(|e| e.to_string())?
     .ok_or_else(|| format!("记录不存在 (id={id})"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bt_input() -> ServerInput {
+        ServerInput {
+            id: None,
+            name: "宝塔面板".into(),
+            host: "1.2.3.4".into(),
+            port: 0,
+            username: "".into(),
+            auth_type: "apikey".into(),
+            key_path: None,
+            secret: None,
+            server_type: "bt".into(),
+            panel_url: Some("https://1.2.3.4:8888".into()),
+            tls_insecure: true,
+        }
+    }
+
+    #[test]
+    fn bt_server_roundtrip() {
+        let conn = Connection::open_in_memory().unwrap();
+        init(&conn).unwrap();
+        let id = insert_server(&conn, &bt_input()).unwrap();
+        set_has_credential(&conn, id, true).unwrap();
+        let s = get_server(&conn, id).unwrap();
+        assert_eq!(s.server_type, "bt");
+        assert_eq!(s.panel_url.as_deref(), Some("https://1.2.3.4:8888"));
+        assert!(s.tls_insecure);
+        assert!(s.has_credential);
+        let mut upd = bt_input();
+        upd.tls_insecure = false;
+        update_server(&conn, id, &upd).unwrap();
+        assert!(!get_server(&conn, id).unwrap().tls_insecure);
+    }
+
+    #[test]
+    fn legacy_ssh_server_gets_defaults() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE server (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL, host TEXT NOT NULL,
+                port INTEGER NOT NULL DEFAULT 22,
+                username TEXT NOT NULL, auth_type TEXT NOT NULL,
+                key_path TEXT,
+                has_credential INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
+            INSERT INTO server (name, host, port, username, auth_type)
+                VALUES ('old', '10.0.0.1', 22, 'root', 'password');",
+        )
+        .unwrap();
+        init(&conn).unwrap();
+        let s = get_server(&conn, 1).unwrap();
+        assert_eq!(s.server_type, "ssh");
+        assert_eq!(s.panel_url, None);
+        assert!(!s.tls_insecure);
+    }
 }

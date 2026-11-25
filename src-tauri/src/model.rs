@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+fn default_server_type() -> String {
+    "ssh".into()
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Server {
     pub id: i64,
@@ -11,6 +15,9 @@ pub struct Server {
     pub key_path: Option<String>,
     pub has_credential: bool,
     pub created_at: String,
+    pub server_type: String,
+    pub panel_url: Option<String>,
+    pub tls_insecure: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -24,6 +31,12 @@ pub struct ServerInput {
     pub key_path: Option<String>,
     /// 密码或私钥口令；None/空 = 保留已存凭据
     pub secret: Option<String>,
+    #[serde(default = "default_server_type")]
+    pub server_type: String,
+    #[serde(default)]
+    pub panel_url: Option<String>,
+    #[serde(default)]
+    pub tls_insecure: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
