@@ -128,7 +128,10 @@ impl BtClient {
             ("sType", "toShell".into()),
             ("sBody", wrap_script(script)),
         ]).await?;
-        let id = add["id"].as_i64().ok_or("面板未返回计划任务 id")?;
+        let id = match add["id"].as_i64() {
+            Some(id) => id,
+            None => return Err(format!("面板未返回计划任务 id，任务 yunsuo-{ts} 可能已创建，请到面板计划任务手动删除")),
+        };
         let run = self.run_task(id, timeout_secs, cancel).await;
         let cleanup_warning = match self.call("crontab", vec![
             ("action", "DelCrontab".into()),
@@ -137,7 +140,13 @@ impl BtClient {
             Ok(_) => None,
             Err(e) => Some(format!("计划任务删除失败（id={id}）：{e}，可到面板计划任务手动删除")),
         };
-        let (code, output) = run?;
+        let (code, output) = match run {
+            Ok(r) => r,
+            Err(e) => return Err(match cleanup_warning {
+                Some(w) => format!("{e}\n{w}"),
+                None => e,
+            }),
+        };
         Ok(ExecOutcome { code, output, cleanup_warning })
     }
 
