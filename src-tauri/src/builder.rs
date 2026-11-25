@@ -1,4 +1,4 @@
-//! 本地构建执行器：Windows 用 cmd /C（UTF-8/GBK 自适应），macOS/Linux 用 sh -c（UTF-8）。
+//! 本地构建执行器：Windows 用 cmd /C（UTF-8/GBK 自适应），Unix 用 sh -c（UTF-8）。
 //! 流式收集输出，支持取消并结束整棵进程树。
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -225,14 +225,7 @@ async fn pump(
     }
 }
 
-/// 在 dir 下执行 cmd，逐行回调输出；返回退出码。取消时杀进程树并返回 Err。
-pub async fn run_streaming(
-    dir: &Path,
-    cmd: &str,
-    cancel: Arc<AtomicBool>,
-    child_pid: Arc<Mutex<Option<u32>>>,
-    mut on_line: impl FnMut(String, bool),
-) -> Result<i32, String> {
+fn build_command(dir: &Path, cmd: &str) -> std::io::Result<Command> {
     #[cfg(windows)]
     let mut command = {
         let mut c = Command::new("cmd");
@@ -243,19 +236,52 @@ pub async fn run_streaming(
     };
     #[cfg(not(windows))]
     let mut command = {
-        let mut c = Command::new("sh");
-        c.args(["-c", cmd]);
+        #[cfg(target_os = "macos")]
+        let mut c = {
+            // Finder 启动时可能没有终端的 PATH；先加载 zsh 登录和交互配置。
+            // 恢复项目目录，再将构建命令原样传给 sh。
+            let project_dir = std::path::absolute(dir)?;
+            let mut c = Command::new("/bin/zsh");
+            c.args([
+                "-ilc",
+                "builtin cd -q -- \"$2\" && exec /bin/sh -c \"$1\"",
+                "yunsuo-build",
+                cmd,
+            ])
+            .arg(project_dir);
+            c
+        };
+        #[cfg(not(target_os = "macos"))]
+        let mut c = {
+            let mut c = Command::new("sh");
+            c.args(["-c", cmd]);
+            c
+        };
         // 独立进程组：取消时可整组结束（sh 的子进程如 node 不会随父进程退出）
         c.process_group(0);
         c
     };
-    let mut child = command
-        .current_dir(dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
+    command.current_dir(dir);
+    Ok(command)
+}
+
+/// 在 dir 下执行 cmd，逐行回调输出；返回退出码。取消时杀进程树并返回 Err。
+pub async fn run_streaming(
+    dir: &Path,
+    cmd: &str,
+    cancel: Arc<AtomicBool>,
+    child_pid: Arc<Mutex<Option<u32>>>,
+    mut on_line: impl FnMut(String, bool),
+) -> Result<i32, String> {
+    let mut child = build_command(dir, cmd)
+        .and_then(|mut command| {
+            command
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .stdin(Stdio::null())
+                .kill_on_drop(true)
+                .spawn()
+        })
         .map_err(|e| format!("无法启动命令「{cmd}」: {e}"))?;
 
     *child_pid.lock().unwrap() = child.id();
@@ -293,4 +319,61 @@ pub async fn run_streaming(
         return Err("已取消".into());
     }
     result
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn macos_build_finds_npm_from_zshrc() {
+        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let project = std::env::temp_dir().join(format!(
+            "yunsuo-build-{}-{}",
+            std::process::id(),
+            timestamp.as_nanos()
+        ));
+        let bin = project.join("node bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(
+            project.join(".zshrc"),
+            "export PATH=\"$PWD/node bin:$PATH\"\ncd /\n",
+        )
+        .unwrap();
+        let npm = bin.join("npm");
+        fs::write(
+            &npm,
+            concat!(
+                "#!/bin/sh\n",
+                "[ -d 'node bin' ] || { echo 'wrong build directory' >&2; exit 1; }\n",
+                "printf '%s\\n' \"$*\"\n",
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&npm, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let output = build_command(
+            &project,
+            "npm run build:h5 && printf '%s\\n' \"$BUILD_MESSAGE\"",
+        )
+        .unwrap()
+        .env("ZDOTDIR", &project)
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+        .env("BUILD_MESSAGE", "build completed")
+        .stdin(Stdio::null())
+        .output()
+        .await;
+        fs::remove_dir_all(&project).unwrap();
+
+        let output = output.unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(output.stdout, b"run build:h5\nbuild completed\n");
+    }
 }

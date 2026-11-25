@@ -1,4 +1,4 @@
-//! 凭据保险箱：密码 / 私钥口令存入 Windows 凭据管理器，数据库不落明文。
+//! 凭据保险箱：密码、私钥口令和 API 密钥存入 macOS 钥匙串或 Windows 凭据管理器。
 const SERVICE: &str = "DeployPilot";
 
 fn entry(server_id: i64) -> Result<keyring::Entry, String> {
@@ -23,5 +23,19 @@ pub fn delete_secret(server_id: i64) -> Result<(), String> {
     match entry(server_id)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("删除凭据失败: {e}")),
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::entry;
+
+    #[test]
+    fn macos_uses_a_persistent_credential_backend() {
+        let entry = entry(1).unwrap();
+        assert!(
+            !entry.get_credential().is::<keyring::mock::MockCredential>(),
+            "macOS 凭据必须在不同的 Entry 实例之间可读"
+        );
     }
 }
