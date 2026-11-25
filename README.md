@@ -4,6 +4,8 @@
 
 面向「AI Agent 开发完顺手部署」场景的轻量级桌面 CI/CD：配置一次，之后每次发版点一个按钮，自动完成 **构建 → 打包 → SFTP 上传 → 备份 → 原子替换 → 重启 → 健康检查**，失败可一键回滚。
 
+📖 **[使用教程](./docs/usage.md)**（安装 → 配服务器 → 一键部署，10 分钟上手） · [更新日志](./CHANGELOG.md) · [下载](https://github.com/rangang/yunsuo/releases)
+
 ## 功能特性
 
 - **项目管理**：自动识别前端（package.json）/ Java（pom.xml / build.gradle）项目，Maven 自动探测（PATH / MAVEN_HOME / IDEA 内置）

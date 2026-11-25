@@ -42,6 +42,24 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes=$(awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            if [ -n "$notes" ]; then
+              printf '## 更新内容\n\n%s\n' "$notes"
+            fi
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and upload to Release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -50,7 +68,10 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "云梭 ${{ github.ref_name }}"
           releaseBody: |
+            ${{ steps.notes.outputs.body }}
             一键打包部署桌面工具：构建 → 打包 → SFTP 上传 → 备份 → 原子替换 → 重启 → 健康检查，失败一键回滚。
+
+            📖 [使用教程](https://github.com/rangang/yunsuo/blob/main/docs/usage.md) · [更新日志](https://github.com/rangang/yunsuo/blob/main/CHANGELOG.md)
 
             ## 下载
             - **Windows 10/11 x64**：`YunSuo_*_x64-setup.exe`（NSIS 简体中文安装界面）
