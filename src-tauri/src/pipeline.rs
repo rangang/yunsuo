@@ -98,6 +98,30 @@ impl Ctx {
     }
 }
 
+#[async_trait::async_trait]
+trait Transport: Send + Sync {
+    async fn exec(&self, ctx: &Ctx, script: &str, timeout_secs: u64, cancel: &AtomicBool) -> Result<(i32, String), String>;
+    async fn upload(&self, ctx: &Ctx, local_file: &Path, upload_name: &str, remote_dir: &str, ts: &str, total: u64, cancel: &Arc<AtomicBool>) -> Result<String, String>;
+    async fn close(&self);
+}
+
+struct SshTransport {
+    session: russh::client::Handle<ssh::TestHandler>,
+}
+
+#[async_trait::async_trait]
+impl Transport for SshTransport {
+    async fn exec(&self, _ctx: &Ctx, script: &str, timeout_secs: u64, _cancel: &AtomicBool) -> Result<(i32, String), String> {
+        ssh::exec_script(&self.session, script, timeout_secs).await.map_err(|e| e.to_string())
+    }
+    async fn upload(&self, ctx: &Ctx, local_file: &Path, upload_name: &str, remote_dir: &str, ts: &str, total: u64, cancel: &Arc<AtomicBool>) -> Result<String, String> {
+        upload_sftp(ctx, &self.session, local_file, upload_name, remote_dir, ts, total, cancel).await
+    }
+    async fn close(&self) {
+        let _ = self.session.disconnect(russh::Disconnect::ByApplication, "finished", "").await;
+    }
+}
+
 fn check_cancel(cancel: &AtomicBool) -> Result<(), String> {
     if cancel.load(Ordering::Relaxed) { Err("已取消".into()) } else { Ok(()) }
 }
@@ -309,6 +333,7 @@ async fn run_inner(
         e
     })?;
     ctx.step("connect", "done", None);
+    let transport = SshTransport { session };
 
     // connect 之后的所有步骤共用会话，结束时统一断开
     let result = async {
@@ -318,7 +343,7 @@ async fn run_inner(
         ctx.step("upload", "running", None);
         let mut attempt = 0u64;
         let remote_path = loop {
-            match upload_sftp(ctx, &session, &artifact_file, &upload_name, remote_dir, ts, total, cancel).await {
+            match transport.upload(ctx, &artifact_file, &upload_name, remote_dir, ts, total, cancel).await {
                 Ok(p) => break p,
                 Err(e) if e == "已取消" => return Err(e),
                 Err(e) => {
@@ -342,7 +367,7 @@ async fn run_inner(
         ctx.step("deploy", "running", None);
         ctx.log("▶ 远程部署：备份旧版 → 原子替换 → 重启服务", "info");
         let script = scripts::deploy_script(project, profile, ts, &upload_name);
-        let (code, output) = ssh::exec_script(&session, &script, 180)
+        let (code, output) = transport.exec(ctx, &script, 180, cancel)
             .await.map_err(|e| format!("远程部署执行失败: {e}"))?;
         for line in output.lines().filter(|l| !l.trim().is_empty()) {
             ctx.log(line, "stdout");
@@ -369,7 +394,7 @@ async fn run_inner(
         } else {
             ctx.step("verify", "running", None);
             ctx.log(format!("▶ 健康检查: {url}"), "info");
-            let (code, output) = ssh::exec_script(&session, &scripts::health_check_script(url), 20)
+            let (code, output) = transport.exec(ctx, &scripts::health_check_script(url), 20, cancel)
                 .await.map_err(|e| format!("健康检查执行失败: {e}"))?;
             let http = output.trim().to_string();
             if code == 127 {
@@ -386,7 +411,7 @@ async fn run_inner(
         Ok(format!("部署成功：{} 已上线，备份 {ts} 可回滚。", project.name))
     }.await;
 
-    let _ = session.disconnect(russh::Disconnect::ByApplication, "deploy finished", "").await;
+    transport.close().await;
     let _ = std::fs::remove_dir_all(&tmp_dir);
     result
 }
@@ -483,18 +508,19 @@ pub async fn run_rollback(
         .map_err(|_| format!("SSH 连接超时（{} 秒）", settings.ssh_timeout))
         .and_then(|r| r.map_err(|e| format!("SSH 连接失败: {e}")))?;
         ctx.step("connect", "done", None);
+        let transport = SshTransport { session };
 
         current_step = "rollback".into();
         ctx.step("rollback", "running", None);
         let target = backup_ts.clone().unwrap_or_else(|| "最新备份".into());
         ctx.log(format!("▶ 回滚到 {target}：恢复备份 → 重启服务"), "info");
         let script = scripts::rollback_script(&project, &profile, backup_ts.as_deref());
-        let (code, output) = ssh::exec_script(&session, &script, 180)
+        let (code, output) = transport.exec(&ctx, &script, 180, &cancel)
             .await.map_err(|e| format!("回滚执行失败: {e}"))?;
         for line in output.lines().filter(|l| !l.trim().is_empty()) {
             ctx.log(line, "stdout");
         }
-        let _ = session.disconnect(russh::Disconnect::ByApplication, "rollback finished", "").await;
+        transport.close().await;
         if output.contains("NO_BACKUP") {
             ctx.step("rollback", "failed", None);
             return Err("没有可用的备份，无法回滚".into());
