@@ -173,6 +173,33 @@ impl BtClient {
             }
         }
     }
+
+    /// 单次 UploadFile（multipart：path + zunfile）。大文件分块编排见 pipeline 的 BtTransport。
+    pub async fn upload_file(&self, data: &[u8], remote_dir: &str, name: &str) -> Result<(), String> {
+        let time = chrono::Utc::now().timestamp();
+        let part = reqwest::multipart::Part::bytes(data.to_vec())
+            .file_name(name.to_string())
+            .mime_str("application/octet-stream")
+            .map_err(|e| e.to_string())?;
+        let form = reqwest::multipart::Form::new()
+            .text("action", "UploadFile")
+            .text("path", remote_dir.to_string())
+            .text("request_time", time.to_string())
+            .text("request_token", sign(&self.sk, time))
+            .part("zunfile", part);
+        let resp = self.http
+            .post(format!("{}/files", self.base))
+            .multipart(form)
+            .timeout(Duration::from_secs(600))
+            .send().await.map_err(net_err)?;
+        let text = resp.text().await.map_err(net_err)?;
+        let v: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|_| "面板上传返回非 JSON".to_string())?;
+        if v["status"].as_bool() == Some(false) {
+            return Err(friendly(v["msg"].as_str().unwrap_or("上传失败")));
+        }
+        Ok(())
+    }
 }
 
 /// 子 shell 隔离原脚本的 set -e / exit；首尾标记用于从面板日志中截取脚本输出与退出码
@@ -198,6 +225,22 @@ pub fn parse_exit(log: &str) -> Option<(i32, String)> {
         lines.push(line);
     }
     None
+}
+
+pub fn sh_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+pub fn part_name(upload_name: &str, index: u64) -> String {
+    format!("{upload_name}.part{:04}", index + 1)
+}
+
+pub fn merge_script(base: &str, name: &str, parts: &[String]) -> String {
+    let list = parts.iter().map(|p| sh_quote(p)).collect::<Vec<_>>().join(" ");
+    format!(
+        "cd {} && cat {} > {} && rm -f {} && wc -c < {}",
+        sh_quote(base), list, sh_quote(name), list, sh_quote(name)
+    )
 }
 
 #[cfg(test)]
@@ -261,5 +304,28 @@ mod tests {
         let (code, out) = parse_exit(text).unwrap();
         assert_eq!(code, 0);
         assert_eq!(out, "ok");
+    }
+
+    #[test]
+    fn part_names() {
+        assert_eq!(part_name("app.jar", 0), "app.jar.part0001");
+        assert_eq!(part_name("app.jar", 12), "app.jar.part0013");
+    }
+
+    #[test]
+    fn merge_script_quotes() {
+        let s = merge_script(
+            "/opt/my app/.deploy_tmp/t1",
+            "app.jar",
+            &["app.jar.part0001".into(), "app.jar.part0002".into()],
+        );
+        assert!(s.starts_with("cd '/opt/my app/.deploy_tmp/t1' && cat 'app.jar.part0001' 'app.jar.part0002' > 'app.jar'"));
+        assert!(s.contains("rm -f 'app.jar.part0001' 'app.jar.part0002'"));
+        assert!(s.ends_with("wc -c < 'app.jar'"));
+    }
+
+    #[test]
+    fn quote_escapes_single_quote() {
+        assert_eq!(sh_quote("a'b"), "'a'\\''b'");
     }
 }
