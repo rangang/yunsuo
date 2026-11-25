@@ -4,10 +4,13 @@ export interface Server {
   host: string;
   port: number;
   username: string;
-  auth_type: "password" | "key";
+  auth_type: "password" | "key" | "apikey";
   key_path: string | null;
   has_credential: boolean;
   created_at: string;
+  server_type: "ssh" | "bt";
+  panel_url: string | null;
+  tls_insecure: boolean;
 }
 
 export interface ServerInput {
@@ -16,9 +19,12 @@ export interface ServerInput {
   host: string;
   port: number;
   username: string;
-  auth_type: "password" | "key";
+  auth_type: "password" | "key" | "apikey";
   key_path: string | null;
   secret?: string;
+  server_type: "ssh" | "bt";
+  panel_url?: string | null;
+  tls_insecure?: boolean;
 }
 
 export interface Project {

@@ -1,21 +1,26 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/ipc";
+import { useAppStore } from "@/stores/app";
 import type { DeployProfile, Project } from "@/ipc/types";
 
 const props = defineProps<{ project: Project; serverId: number; envName: string; profile: DeployProfile | null }>();
 const emit = defineEmits<{ (e: "close"): void; (e: "saved", p: DeployProfile): void }>();
 
-const defaults = props.project.type === "java"
-  ? { restart: `sudo systemctl restart ${props.project.name}`, health: "http://127.0.0.1:8080/actuator/health" }
-  : { restart: "sudo systemctl reload nginx", health: "" };
+const store = useAppStore();
+const isBt = computed(() => store.servers.find((s) => s.id === props.serverId)?.server_type === "bt");
+const defaults = computed(() =>
+  props.project.type === "java"
+    ? { restart: `${isBt.value ? "" : "sudo "}systemctl restart ${props.project.name}`, health: "http://127.0.0.1:8080/actuator/health" }
+    : { restart: isBt.value ? "" : "sudo systemctl reload nginx", health: "" },
+);
 
 const form = reactive({
   remote_dir: props.profile?.remote_dir ?? "",
   site_dir: props.profile?.site_dir ?? "current",
   jar_name: props.profile?.jar_name ?? "app.jar",
-  restart_command: props.profile?.restart_command ?? defaults.restart,
-  health_check_url: props.profile?.health_check_url ?? defaults.health,
+  restart_command: props.profile?.restart_command ?? defaults.value.restart,
+  health_check_url: props.profile?.health_check_url ?? defaults.value.health,
   backup_keep: props.profile?.backup_keep ?? 3,
   is_prod: props.profile?.is_prod ?? false,
 });
@@ -93,7 +98,7 @@ async function save() {
         <div class="field full">
           <label>重启命令 {{ project.type === "java" ? "" : "（可选）" }}<span v-if="project.type === 'java'" class="req"> *</span></label>
           <input v-model="form.restart_command" class="input mono" :placeholder="defaults.restart" />
-          <div class="hint">需要 sudo 时请为目标命令配置 NOPASSWD，工具不支持交互式输入 sudo 密码</div>
+          <div class="hint">{{ isBt ? "宝塔模式以 root 执行，无需 sudo；备份目录请放在站点根目录之外，避免被公网下载" : "需要 sudo 时请为目标命令配置 NOPASSWD，工具不支持交互式输入 sudo 密码" }}</div>
         </div>
         <div class="field full">
           <label>健康检查 URL（可选）</label>

@@ -25,11 +25,19 @@ const mockServers: Server[] = [
     id: 1, name: "生产服务器", host: "47.98.12.34", port: 22, username: "root",
     auth_type: "key", key_path: "C:\\Users\\me\\.ssh\\id_ed25519",
     has_credential: true, created_at: "2026-11-18 10:00:00",
+    server_type: "ssh", panel_url: null, tls_insecure: false,
   },
   {
     id: 2, name: "测试服务器", host: "192.168.1.100", port: 22, username: "deploy",
     auth_type: "password", key_path: null,
     has_credential: true, created_at: "2026-11-18 10:05:00",
+    server_type: "ssh", panel_url: null, tls_insecure: false,
+  },
+  {
+    id: 3, name: "宝塔面板（生产）", host: "47.98.12.34", port: 0, username: "",
+    auth_type: "apikey", key_path: null,
+    has_credential: true, created_at: "2026-11-18 10:08:00",
+    server_type: "bt", panel_url: "https://47.98.12.34:8888", tls_insecure: true,
   },
 ];
 const mockProjects: Project[] = [
@@ -64,6 +72,8 @@ const mockApi = {
       ...input,
       id: ++mockSeq,
       key_path: input.key_path ?? null,
+      panel_url: input.panel_url ?? null,
+      tls_insecure: input.tls_insecure ?? false,
       has_credential: !!input.secret,
       created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
     };

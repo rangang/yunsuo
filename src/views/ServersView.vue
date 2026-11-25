@@ -54,7 +54,7 @@ function testClass(s: Server): string {
     <div class="page-head">
       <div>
         <div class="page-title">服务器管理</div>
-        <div class="page-sub">SSH 连接配置 · 密码与私钥口令加密保存在 {{ credStore }}</div>
+        <div class="page-sub">SSH / 宝塔面板连接配置 · 凭据加密保存在 {{ credStore }}</div>
       </div>
       <div class="head-right">
         <button class="btn primary" @click="modal = { mode: 'add' }">＋ 添加服务器</button>
@@ -66,21 +66,31 @@ function testClass(s: Server): string {
         <div class="s-head">
           <span class="dot" :class="tests[s.id]?.result?.ok ? 'green' : 'gray'"></span>
           <span class="s-name">{{ s.name }}</span>
+          <span class="tag blue">{{ s.server_type === "bt" ? "宝塔" : "SSH" }}</span>
           <span class="tag" :class="tests[s.id]?.result ? (tests[s.id].result!.ok ? 'green' : 'red') : 'gray'">
             {{ tests[s.id]?.result ? (tests[s.id].result!.ok ? "已连接" : "连接失败") : "未测试" }}
           </span>
         </div>
-        <div class="s-kv"><span class="k">主机</span><span class="v mono">{{ s.host }}</span></div>
-        <div class="s-kv"><span class="k">端口</span><span class="v mono">{{ s.port }}</span></div>
-        <div class="s-kv"><span class="k">用户名</span><span class="v mono">{{ s.username }}</span></div>
-        <div class="s-kv">
-          <span class="k">认证方式</span>
-          <span class="v">
-            {{ s.auth_type === "key" ? "私钥" : "密码" }}
-            <span v-if="s.auth_type === 'key'" class="mono" style="color: var(--faint)">{{ s.key_path }}</span>
-            <span v-else class="mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
-          </span>
-        </div>
+        <template v-if="s.server_type === 'bt'">
+          <div class="s-kv"><span class="k">面板地址</span><span class="v mono">{{ s.panel_url }}</span></div>
+          <div class="s-kv">
+            <span class="k">API 密钥</span>
+            <span class="v mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
+          </div>
+        </template>
+        <template v-else>
+          <div class="s-kv"><span class="k">主机</span><span class="v mono">{{ s.host }}</span></div>
+          <div class="s-kv"><span class="k">端口</span><span class="v mono">{{ s.port }}</span></div>
+          <div class="s-kv"><span class="k">用户名</span><span class="v mono">{{ s.username }}</span></div>
+          <div class="s-kv">
+            <span class="k">认证方式</span>
+            <span class="v">
+              {{ s.auth_type === "key" ? "私钥" : "密码" }}
+              <span v-if="s.auth_type === 'key'" class="mono" style="color: var(--faint)">{{ s.key_path }}</span>
+              <span v-else class="mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
+            </span>
+          </div>
+        </template>
         <div class="s-test" :class="testClass(s)">{{ testText(s) }}</div>
         <div class="s-actions">
           <button class="btn ghost sm" :disabled="tests[s.id]?.status === 'testing'" @click="test(s)">
@@ -102,7 +112,7 @@ function testClass(s: Server): string {
         <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="7" rx="2" /><rect x="3" y="13" width="18" height="7" rx="2" /><circle cx="7" cy="7.5" r=".5" fill="currentColor" /><circle cx="7" cy="16.5" r=".5" fill="currentColor" /></svg>
       </div>
       <div class="e-title">还没有服务器</div>
-      <div class="e-desc">添加一台 Linux 服务器（SSH 密码或私钥认证），之后即可将项目产物一键部署上去。</div>
+      <div class="e-desc">添加一台 Linux 服务器（SSH 密码/私钥），或一个宝塔面板（API 密钥，无需 SSH），之后即可将项目产物一键部署上去。</div>
       <button class="btn primary" @click="modal = { mode: 'add' }">＋ 添加服务器</button>
     </div>
 
