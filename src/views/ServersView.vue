@@ -71,26 +71,28 @@ function testClass(s: Server): string {
             {{ tests[s.id]?.result ? (tests[s.id].result!.ok ? "已连接" : "连接失败") : "未测试" }}
           </span>
         </div>
-        <template v-if="s.server_type === 'bt'">
-          <div class="s-kv"><span class="k">面板地址</span><span class="v mono">{{ s.panel_url }}</span></div>
-          <div class="s-kv">
-            <span class="k">API 密钥</span>
-            <span class="v mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
-          </div>
-        </template>
-        <template v-else>
-          <div class="s-kv"><span class="k">主机</span><span class="v mono">{{ s.host }}</span></div>
-          <div class="s-kv"><span class="k">端口</span><span class="v mono">{{ s.port }}</span></div>
-          <div class="s-kv"><span class="k">用户名</span><span class="v mono">{{ s.username }}</span></div>
-          <div class="s-kv">
-            <span class="k">认证方式</span>
-            <span class="v">
-              {{ s.auth_type === "key" ? "私钥" : "密码" }}
-              <span v-if="s.auth_type === 'key'" class="mono" style="color: var(--faint)">{{ s.key_path }}</span>
-              <span v-else class="mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
-            </span>
-          </div>
-        </template>
+        <div class="s-body">
+          <template v-if="s.server_type === 'bt'">
+            <div class="s-kv"><span class="k">面板地址</span><span class="v mono">{{ s.panel_url }}</span></div>
+            <div class="s-kv">
+              <span class="k">API 密钥</span>
+              <span class="v mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <div class="s-kv"><span class="k">主机</span><span class="v mono">{{ s.host }}</span></div>
+            <div class="s-kv"><span class="k">端口</span><span class="v mono">{{ s.port }}</span></div>
+            <div class="s-kv"><span class="k">用户名</span><span class="v mono">{{ s.username }}</span></div>
+            <div class="s-kv">
+              <span class="k">认证方式</span>
+              <span class="v">
+                {{ s.auth_type === "key" ? "私钥" : "密码" }}
+                <span v-if="s.auth_type === 'key'" class="mono" style="color: var(--faint)">{{ s.key_path }}</span>
+                <span v-else class="mono" style="color: var(--faint)">{{ s.has_credential ? "••••••••" : "未设置" }}</span>
+              </span>
+            </div>
+          </template>
+        </div>
         <div class="s-test" :class="testClass(s)">{{ testText(s) }}</div>
         <div class="s-actions">
           <button class="btn ghost sm" :disabled="tests[s.id]?.status === 'testing'" @click="test(s)">

@@ -193,6 +193,8 @@ select.input { appearance: none; cursor: pointer; }
 .s-card .s-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .s-card .s-name { font-size: 15.5px; font-weight: 700; }
 .s-card .s-head .tag { margin-left: auto; }
+.s-card .s-head .tag.blue { margin-left: 0; }
+.s-body { flex: 1; }
 .s-kv { display: flex; font-size: 12.8px; padding: 5px 0; }
 .s-kv .k { width: 76px; color: var(--faint); flex: none; }
 .s-kv .v { color: var(--text); word-break: break-all; }
