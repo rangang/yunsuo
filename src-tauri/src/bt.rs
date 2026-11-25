@@ -2,12 +2,19 @@
 //! 认证：request_token = md5(request_time + md5(api_sk))，见 docs.bt.cn/api。
 
 use crate::model::TestResult;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 pub struct BtClient {
     base: String,
     sk: String,
     http: reqwest::Client,
+}
+
+pub struct ExecOutcome {
+    pub code: i32,
+    pub output: String,
+    pub cleanup_warning: Option<String>,
 }
 
 /// 取 panel_url 的 origin 作为 API 基址（安全入口路径只拦页面登录，API 走根路由）
@@ -104,6 +111,84 @@ impl BtClient {
             },
         }
     }
+
+    /// 经计划任务执行 shell：AddCrontab → set_execute_script → 轮询 GetLogs → DelCrontab（必删）
+    pub async fn exec_script(
+        &self,
+        script: &str,
+        timeout_secs: u64,
+        cancel: &AtomicBool,
+    ) -> Result<ExecOutcome, String> {
+        let ts = chrono::Local::now().format("%Y%m%d_%H%M%S%.3f");
+        let add = self.call("crontab", vec![
+            ("action", "AddCrontab".into()),
+            ("name", format!("yunsuo-{ts}")),
+            ("type", "minute-n".into()),
+            ("where1", "30".into()),
+            ("sType", "toShell".into()),
+            ("sBody", wrap_script(script)),
+        ]).await?;
+        let id = add["id"].as_i64().ok_or("面板未返回计划任务 id")?;
+        let run = self.run_task(id, timeout_secs, cancel).await;
+        let cleanup_warning = match self.call("crontab", vec![
+            ("action", "DelCrontab".into()),
+            ("id", id.to_string()),
+        ]).await {
+            Ok(_) => None,
+            Err(e) => Some(format!("计划任务删除失败（id={id}）：{e}，可到面板计划任务手动删除")),
+        };
+        let (code, output) = run?;
+        Ok(ExecOutcome { code, output, cleanup_warning })
+    }
+
+    async fn run_task(&self, id: i64, timeout_secs: u64, cancel: &AtomicBool) -> Result<(i32, String), String> {
+        self.call("crontab", vec![
+            ("action", "set_execute_script".into()),
+            ("id", id.to_string()),
+        ]).await?;
+        let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Err("已取消".into());
+            }
+            if Instant::now() >= deadline {
+                return Err(format!("远程执行超时（{timeout_secs} 秒），可能面板计划任务服务未运行"));
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let v = self.call("crontab", vec![
+                ("action", "GetLogs".into()),
+                ("id", id.to_string()),
+            ]).await?;
+            if let Some(r) = parse_exit(v["msg"].as_str().unwrap_or("")) {
+                return Ok(r);
+            }
+        }
+    }
+}
+
+/// 子 shell 隔离原脚本的 set -e / exit；首尾标记用于从面板日志中截取脚本输出与退出码
+pub fn wrap_script(script: &str) -> String {
+    format!("echo YUNSUO_BEGIN\n(\n{}\n)\necho \"YUNSUO_EXIT=$?\"\n", script.trim_end())
+}
+
+pub fn parse_exit(log: &str) -> Option<(i32, String)> {
+    let mut inside = false;
+    let mut lines: Vec<&str> = Vec::new();
+    for line in log.lines() {
+        let t = line.trim();
+        if !inside {
+            if t == "YUNSUO_BEGIN" {
+                inside = true;
+            }
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("YUNSUO_EXIT=") {
+            let code: i32 = rest.trim().parse().ok()?;
+            return Some((code, lines.join("\n")));
+        }
+        lines.push(line);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -130,5 +215,42 @@ mod tests {
         assert!(friendly("您的IP不在白名单中").contains("白名单"));
         assert!(friendly("签名校验失败").contains("60 秒"));
         assert_eq!(friendly("站点不存在"), "站点不存在");
+    }
+
+    #[test]
+    fn wrap_contains_markers() {
+        let w = wrap_script("echo hi");
+        assert!(w.starts_with("echo YUNSUO_BEGIN\n(\n"));
+        assert!(w.ends_with(")\necho \"YUNSUO_EXIT=$?\"\n"));
+    }
+
+    #[test]
+    fn parse_exit_normal() {
+        let text = "★[2026-11-25 12:00:00]\nYUNSUO_BEGIN\nhello\nDEPLOY_OK\nYUNSUO_EXIT=0\n----footer";
+        let (code, out) = parse_exit(text).unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(out, "hello\nDEPLOY_OK");
+    }
+
+    #[test]
+    fn parse_exit_failure_code() {
+        let text = "YUNSUO_BEGIN\nboom\nYUNSUO_EXIT=3";
+        let (code, out) = parse_exit(text).unwrap();
+        assert_eq!(code, 3);
+        assert_eq!(out, "boom");
+    }
+
+    #[test]
+    fn parse_exit_missing_marker() {
+        assert!(parse_exit("still running").is_none());
+        assert!(parse_exit("YUNSUO_BEGIN\npartial").is_none());
+    }
+
+    #[test]
+    fn parse_exit_ignores_noise_before_begin() {
+        let text = "YUNSUO_EXIT=9\nYUNSUO_BEGIN\nok\nYUNSUO_EXIT=0";
+        let (code, out) = parse_exit(text).unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(out, "ok");
     }
 }
