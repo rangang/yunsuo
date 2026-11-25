@@ -41,7 +41,7 @@
 - 修改：`src-tauri/src/store.rs`（init 迁移数组、row_to_server、SERVER_COLS、insert_server、update_server）
 - 测试：`src-tauri/src/store.rs` 内新增 `#[cfg(test)] mod tests`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `src-tauri/src/store.rs` 文件末尾追加：
 
@@ -109,12 +109,12 @@ mod tests {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：`cd src-tauri && cargo test store::tests`
 预期：编译错误 `missing field server_type` / `no field server_type`（ServerInput/Server 尚无新字段）。
 
-- [ ] **步骤 3：实现 model.rs**
+- [x] **步骤 3：实现 model.rs**
 
 `src-tauri/src/model.rs`：在 `use serde...` 之后加默认值函数，并给两个结构体加字段。
 
@@ -145,7 +145,7 @@ fn default_server_type() -> String {
 }
 ```
 
-- [ ] **步骤 4：实现 store.rs**
+- [x] **步骤 4：实现 store.rs**
 
 init 的迁移数组（`for col in [` 内）末尾追加 3 行：
 
@@ -203,12 +203,12 @@ pub fn update_server(conn: &Connection, id: i64, input: &ServerInput) -> Result<
 }
 ```
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test store::tests`
 预期：2 个测试 PASS。再跑 `cargo check` 确认全 crate 编译（pipeline/commands 只读 Server 已有字段，不受影响）。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src-tauri/src/model.rs src-tauri/src/store.rs
@@ -224,7 +224,7 @@ git commit -m "feat: server 表支持宝塔类型（server_type/panel_url/tls_in
 - 修改：`src-tauri/src/main.rs:3-10`（mod 列表）
 - 创建：`src-tauri/src/bt.rs`
 
-- [ ] **步骤 1：添加依赖与模块注册**
+- [x] **步骤 1：添加依赖与模块注册**
 
 `src-tauri/Cargo.toml` `[dependencies]` 末尾（`chrono = "0.4"` 之后）追加：
 
@@ -241,7 +241,7 @@ mod bt;
 
 （放在 `mod builder;` 之前。）
 
-- [ ] **步骤 2：编写失败的测试**
+- [x] **步骤 2：编写失败的测试**
 
 创建 `src-tauri/src/bt.rs`，先只写测试与最小骨架之外的纯函数签名占位是不允许的——直接写完整测试文件内容如下（实现下一步补齐，本步结束时文件含测试 + 空实现签名以外的内容见步骤 3；为让测试先失败，本步仅写入测试模块与 `pub fn` 的 `todo!()`  bodies）：
 
@@ -291,12 +291,12 @@ mod tests {
 }
 ```
 
-- [ ] **步骤 3：运行测试验证失败**
+- [x] **步骤 3：运行测试验证失败**
 
 运行：`cd src-tauri && cargo test bt::tests`
 预期：3 个测试 FAIL（panic `not yet implemented`）。
 
-- [ ] **步骤 4：实现基础客户端**
+- [x] **步骤 4：实现基础客户端**
 
 将 `bt.rs` 中三个 `todo!()` 函数替换为以下完整实现，并在文件顶部补齐 use 与结构体（测试模块保留不动）：
 
@@ -415,12 +415,12 @@ use crate::model::TestResult;
 use std::time::{Duration, Instant};
 ```
 
-- [ ] **步骤 5：运行测试验证通过**
+- [x] **步骤 5：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test bt::tests && cargo check`
 预期：3 个测试 PASS，全 crate 编译通过。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/main.rs src-tauri/src/bt.rs
@@ -435,7 +435,7 @@ git commit -m "feat: 宝塔 API 客户端基础（签名/地址规范化/请求�
 - 修改：`src-tauri/src/bt.rs`
 - 测试：`bt.rs` 内 `tests` 模块追加
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 在 `bt.rs` 的 `mod tests` 内追加：
 
@@ -490,12 +490,12 @@ pub fn parse_exit(_log: &str) -> Option<(i32, String)> {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：`cd src-tauri && cargo test bt::tests`
 预期：新增 5 个测试 FAIL（`not yet implemented`），旧 3 个仍 PASS。
 
-- [ ] **步骤 3：实现纯函数与 exec 编排**
+- [x] **步骤 3：实现纯函数与 exec 编排**
 
 替换两个 `todo!()`：
 
@@ -599,12 +599,12 @@ use 区补上：
 use std::sync::atomic::{AtomicBool, Ordering};
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test bt::tests && cargo check`
 预期：8 个测试 PASS，编译无警告。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/bt.rs
@@ -619,7 +619,7 @@ git commit -m "feat: 宝塔执行通道——计划任务包装脚本与退出�
 - 修改：`src-tauri/src/bt.rs`
 - 测试：`bt.rs` 内 `tests` 模块追加
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 `mod tests` 内追加：
 
@@ -664,12 +664,12 @@ pub fn merge_script(_base: &str, _name: &str, _parts: &[String]) -> String {
 }
 ```
 
-- [ ] **步骤 2：运行测试验证失败**
+- [x] **步骤 2：运行测试验证失败**
 
 运行：`cd src-tauri && cargo test bt::tests`
 预期：新增 3 个 FAIL，旧 8 个 PASS。
 
-- [ ] **步骤 3：实现**
+- [x] **步骤 3：实现**
 
 替换三个 `todo!()`：
 
@@ -722,12 +722,12 @@ pub fn merge_script(base: &str, name: &str, parts: &[String]) -> String {
     }
 ```
 
-- [ ] **步骤 4：运行测试验证通过**
+- [x] **步骤 4：运行测试验证通过**
 
 运行：`cd src-tauri && cargo test bt::tests && cargo check`
 预期：11 个测试 PASS。
 
-- [ ] **步骤 5：Commit**
+- [x] **步骤 5：Commit**
 
 ```bash
 git add src-tauri/src/bt.rs
@@ -743,7 +743,7 @@ git commit -m "feat: 宝塔上传原语（UploadFile/分块命名/合并脚本�
 
 本任务不引入宝塔逻辑，只把 SSH 会话包进 `Transport`，为任务 6 的分发铺路。行为必须与重构前完全一致。
 
-- [ ] **步骤 1：添加 trait 与 SshTransport**
+- [x] **步骤 1：添加 trait 与 SshTransport**
 
 在 `pipeline.rs` 的 `impl Ctx { ... }` 块之后、`fn check_cancel` 之前插入：
 
@@ -773,7 +773,7 @@ impl Transport for SshTransport {
 }
 ```
 
-- [ ] **步骤 2：run_inner 改用 transport**
+- [x] **步骤 2：run_inner 改用 transport**
 
 connect 段：在 `ctx.step("connect", "done", None);`（约 311 行）之后插入一行：
 
@@ -797,7 +797,7 @@ async 块结束后：
 `let _ = session.disconnect(russh::Disconnect::ByApplication, "deploy finished", "").await;`
 → `transport.close().await;`
 
-- [ ] **步骤 3：run_rollback 改用 transport**
+- [x] **步骤 3：run_rollback 改用 transport**
 
 `ctx.step("connect", "done", None);`（约 485 行）之后插入：
 
@@ -809,16 +809,16 @@ async 块结束后：
 1. `ssh::exec_script(&session, &script, 180)` → `transport.exec(&ctx, &script, 180, &cancel)`（其后 `.await.map_err(|e| format!("回滚执行失败: {e}"))?` 保留）
 2. `let _ = session.disconnect(russh::Disconnect::ByApplication, "rollback finished", "").await;` → `transport.close().await;`
 
-- [ ] **步骤 4：编译 + 全量测试**
+- [x] **步骤 4：编译 + 全量测试**
 
 运行：`cd src-tauri && cargo check && cargo test`
 预期：编译通过（无 unused 警告），任务 1-4 的 13 个测试全部 PASS。
 
-- [ ] **步骤 5：浏览器 mock 冒烟（SSH 路径 UI 无回归）**
+- [x] **步骤 5：浏览器 mock 冒烟（SSH 路径 UI 无回归）**
 
 运行：仓库根 `npm run dev`，浏览器打开提示的本地地址 → 服务器管理页应正常显示 2 条 mock 服务器；项目页发起一次 mock 部署，7 步事件流完整走到「部署成功」。确认后 Ctrl+C 停止。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src-tauri/src/pipeline.rs
@@ -833,7 +833,7 @@ git commit -m "refactor: 流水线引入 Transport 传输层抽象（SSH 实现�
 - 修改：`src-tauri/src/pipeline.rs`
 - 修改：`src-tauri/src/commands.rs:51-75`
 
-- [ ] **步骤 1：pipeline 引入 bt 与 BtTransport**
+- [x] **步骤 1：pipeline 引入 bt 与 BtTransport**
 
 `pipeline.rs` 顶部 `use crate::{builder, scripts, ssh, store};` 改为：
 
@@ -954,7 +954,7 @@ async fn connect_transport(
 }
 ```
 
-- [ ] **步骤 2：run_inner connect 段替换为分发**
+- [x] **步骤 2：run_inner connect 段替换为分发**
 
 将 run_inner 中从 `ctx.log(format!("▶ 连接服务器 ...` 到 `ctx.step("connect", "done", None);` 的整段（含 `let auth = ...`、`let session = ...`、`let transport = SshTransport { session };`）替换为：
 
@@ -968,7 +968,7 @@ async fn connect_transport(
 
 （保留其前的 `*current_step = "connect".into(); ctx.step("connect", "running", None);`。）
 
-- [ ] **步骤 3：run_rollback connect 段替换为分发**
+- [x] **步骤 3：run_rollback connect 段替换为分发**
 
 将 run_rollback 中从 `ctx.log(format!("▶ 连接服务器 ...` 到 `let transport = SshTransport { session };` 的整段替换为：
 
@@ -978,7 +978,7 @@ async fn connect_transport(
 
 （保留其前的 `ctx.step("connect", "running", None);` 与其后的 `ctx.step("connect", "done", None);`。）
 
-- [ ] **步骤 4：commands.rs 测试连接分发**
+- [x] **步骤 4：commands.rs 测试连接分发**
 
 `commands.rs` 顶部 `use crate::{builder, ssh, store, vault};` 改为：
 
@@ -1012,12 +1012,12 @@ use crate::{bt, builder, ssh, store, vault};
     }
 ```
 
-- [ ] **步骤 5：编译 + 全量测试**
+- [x] **步骤 5：编译 + 全量测试**
 
 运行：`cd src-tauri && cargo check && cargo test`
 预期：编译通过、13 个测试 PASS。
 
-- [ ] **步骤 6：Commit**
+- [x] **步骤 6：Commit**
 
 ```bash
 git add src-tauri/src/pipeline.rs src-tauri/src/commands.rs
@@ -1035,7 +1035,7 @@ git commit -m "feat: 宝塔传输层接入流水线与连接测试分发"
 - 修改：`src/views/ServersView.vue`
 - 修改：`src/components/ProfileModal.vue`
 
-- [ ] **步骤 1：扩展 types.ts**
+- [x] **步骤 1：扩展 types.ts**
 
 `Server` 接口改为：
 
@@ -1074,7 +1074,7 @@ export interface ServerInput {
 }
 ```
 
-- [ ] **步骤 2：更新 mock**
+- [x] **步骤 2：更新 mock**
 
 `src/ipc/index.ts`：两条现有 mockServers 各追加字段 `server_type: "ssh", panel_url: null, tls_insecure: false,`；数组末尾追加第三条：
 
@@ -1101,7 +1101,7 @@ export interface ServerInput {
     };
 ```
 
-- [ ] **步骤 3：重写 ServerModal.vue**
+- [x] **步骤 3：重写 ServerModal.vue**
 
 整文件替换为：
 
@@ -1329,7 +1329,7 @@ async function save() {
 </style>
 ```
 
-- [ ] **步骤 4：ServersView.vue 展示宝塔**
+- [x] **步骤 4：ServersView.vue 展示宝塔**
 
 页面副标题（`page-sub`）改为：
 
@@ -1374,7 +1374,7 @@ async function save() {
       <div class="e-desc">添加一台 Linux 服务器（SSH 密码/私钥），或一个宝塔面板（API 密钥，无需 SSH），之后即可将项目产物一键部署上去。</div>
 ```
 
-- [ ] **步骤 5：ProfileModal.vue 宝塔默认值**
+- [x] **步骤 5：ProfileModal.vue 宝塔默认值**
 
 script 区：import 行改为：
 
@@ -1407,12 +1407,12 @@ template 中重启命令的 hint 行替换为：
 
 （template 中 `:placeholder="defaults.restart"` 与 `defaults.health` 无需改动——computed 在模板中自动解包。）
 
-- [ ] **步骤 6：类型检查 + 构建**
+- [x] **步骤 6：类型检查 + 构建**
 
 运行：仓库根 `npm run build`
 预期：vue-tsc 无错误，vite 构建成功。
 
-- [ ] **步骤 7：浏览器 mock golden path**
+- [x] **步骤 7：浏览器 mock golden path**
 
 运行：`npm run dev`，浏览器逐项验证：
 1. 服务器页显示 3 条卡片，第三条带「宝塔」徽标、面板地址、API 密钥 ••••；
@@ -1422,7 +1422,7 @@ template 中重启命令的 hint 行替换为：
 5. 项目页对 mock 项目发起部署 → 事件流完整成功。
 确认后 Ctrl+C 停止。
 
-- [ ] **步骤 8：Commit**
+- [x] **步骤 8：Commit**
 
 ```bash
 git add src/ipc/types.ts src/ipc/index.ts src/components/ServerModal.vue src/views/ServersView.vue src/components/ProfileModal.vue
@@ -1436,7 +1436,7 @@ git commit -m "feat: 前端支持宝塔面板服务器（表单/列表/部署配
 **文件：**
 - 修改：`README.md`
 
-- [ ] **步骤 1：更新 README**
+- [x] **步骤 1：更新 README**
 
 「功能特性」列表中「服务器管理」一条改为：
 
@@ -1444,7 +1444,7 @@ git commit -m "feat: 前端支持宝塔面板服务器（表单/列表/部署配
 - **服务器管理**：SSH 密码 / 私钥认证，连接测试；**宝塔面板 API 模式（无需 SSH）**：面板设置开启 API 接口 + IP 白名单即可部署；凭据存 Windows 凭据管理器，数据库不落明文
 ```
 
-- [ ] **步骤 2：全量验证**
+- [x] **步骤 2：全量验证**
 
 运行：
 
@@ -1455,7 +1455,7 @@ cd .. && npm run build
 
 预期：cargo 无警告、13 个测试 PASS；vue-tsc + vite 构建成功。
 
-- [ ] **步骤 3：Commit**
+- [x] **步骤 3：Commit**
 
 ```bash
 git add README.md
